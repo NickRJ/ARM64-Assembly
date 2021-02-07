@@ -25,25 +25,7 @@ _start:
     mov    w2, 2            // current length of string
     mov    x3, 13           // stack offset; store current char in sp + offset
 
-    b      push_digits
-
-
-// compute LSD, store on stack
-// args: w0: numerator, w1: divisor, w2: length
-push_digits:
-    bl     modulo           // compute w0 % 10, store result in w4
-                            // set link register (x30) to next instruction & branch to function
-
-    add    w4, w4, 48       // convert single digit to ascii: add '0'
-    strb   w4, [sp, x3]     // push w4 to stack
-    sub    x3, x3, 1        // decrement stack offset, making room for next char
-    add    w2, w2, 1        // increment length
-    
-    sdiv   w0, w0, w1       // w0 //= 10
-    cmp    w0, 0            // if w0 == 0, end
-    beq    end
-
-    b      push_digits      // keep looping on each digit
+    b      push_digit
 
 
 // compute modulo
@@ -58,6 +40,22 @@ modulo:
     sub    w4, w0, w4       // w4 = N - w4
 
     ret                     // return from function: set pc to address in link register
+
+
+// compute LSD, store on stack
+// args: w0: numerator, w1: divisor, w2: length
+push_digit:
+    bl     modulo           // compute w0 % 10, store result in w4
+                            // set link register (x30) to next instruction & branch to function
+
+    add    w4, w4, 48       // convert single digit to ascii: add '0'
+    strb   w4, [sp, x3]     // push w4 to stack
+    sub    x3, x3, 1        // decrement stack offset, making room for next char
+    add    w2, w2, 1        // increment length
+    
+    sdiv   w0, w0, w1       // w0 //= 10
+    cmp    w0, 0            // keep looping until w0 == 0
+    bne    push_digit
 
 
 // print integer stored on stack
