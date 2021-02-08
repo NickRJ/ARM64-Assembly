@@ -11,62 +11,93 @@
 .text
 
 _start:
-    mov    w0, 1234         // integer to convert to string
-    mov    w1, 10           // divisor
+    mov    x1, sp           // pointer to end of string
+    sub    sp, sp, 32       // allocate 32 bytes of stack space, use to store chars
 
-    sub    sp, sp, 16       // allocate 16 bytes of stack space, use as stack to store chars
-                            // push each char inside stack
-                            // enough to store max 10 digits + '\n' + '\0'
-    mov    w9, 0          
-    strb   w9, [sp, 15]     // push null terminator at sp+15
-    mov    w9, 10
-    strb   w9, [sp, 14]     // push newline char '\n' at sp+14
+    mov    w0, 1234
+    bl     int_to_str       // call int_to_str()
+    str    x0, [sp]         // store pointer on stack
 
-    mov    w2, 2            // current length of string
-    mov    x3, 13           // stack offset; store current char in sp + offset
+    bl     strlen           // call strlen() on returned string
+    str    x0, [sp, 8]      // store length on stack
 
-    b      push_digit
+                            // syscall args:
+    mov    x0, 1            // stdout
+    ldr    x1, [sp]         // pointer to first char
+    ldr    x2, [sp, 8]      // string length
+    mov    x8, 64
+    svc    0                // print to stdout
+
+    add    sp, sp, 32       // deallocate stack
+
+    mov    x8, 93           
+    svc    0                // exit program
 
 
-// compute modulo
-// R = N - ((N / D) * D)
-// args: w0: numerator (N), w1: divisor (D)
-// returns: w4
+// strlen(const char* str)
+// increments length until null-terminator reached
+// returns length of string
+strlen:
+    mov    x1, -1           // init length
+
+.str_loop:
+    add    x1, x1, 1        // increment length
+    ldr    w2, [x0, x1]     // w2 = str[x1]
+    cmp    w2, 0
+    bne    .str_loop
+
+    mov    x0, x1           // return
+    ret
+
+
+// modulo(int n, int d)
+// n % d = n - ((n / d) * d)
+// returns n % d
 modulo:
-    sdiv   w4, w0, w1       // w4 = N / 10
-    mul    w4, w4, w1       // w4 *= 10
+    mov    w8, w0           // store n in temp
+    sdiv   w0, w0, w1       // w0 = n / d
+    mul    w0, w0, w1       // w0 *= d
                             // can Rd and Rm be the same? apparently so
                             // was not supported in earlier ARM versions
-    sub    w4, w0, w4       // w4 = N - w4
-
+    sub    w0, w8, w0       // w4 = n - w4
     ret                     // return from function: set pc to address in link register
 
 
-// compute LSD, store on stack
-// args: w0: numerator, w1: divisor, w2: length
-push_digit:
-    bl     modulo           // compute w0 % 10, store result in w4
+// int_to_str(int n, char* str_end)
+// returns pointer to first char
+int_to_str:
+    stp    x29, x30, [sp, -48]!     // store fp, lp, allocate 48 bytes of stack space
+    str    x21, [sp, 32]            // store callee-saved registers
+    stp    x19, x20, [sp, 16]       
+
+                            // store arguments
+    mov    w19, w0          // input
+    mov    x20, x1          // pointer to end of string
+    mov    w21, 10          // divisor
+
+    mov    w8, 0
+    strb   w8, [x20, -1]!   // push null terminator to stack
+    mov    w8, 10
+    strb   w8, [x20, -1]!   // push newline char '\n' to stack
+
+// compute LSD, push to stack
+.push_digit:
+    mov    w0, w19          // args to modulo subroutine
+    mov    w1, w21
+    bl     modulo           // call modulo() to compute n % 10
                             // set link register (x30) to next instruction & branch to function
 
-    add    w4, w4, 48       // convert single digit to ascii: add '0'
-    strb   w4, [sp, x3]     // push w4 to stack
-    sub    x3, x3, 1        // decrement stack offset, making room for next char
-    add    w2, w2, 1        // increment length
-    
-    sdiv   w0, w0, w1       // w0 //= 10
-    cmp    w0, 0            // keep looping until w0 == 0
-    bne    push_digit
+    add    w0, w0, 48       // convert single digit to ascii: add '0'
+    strb   w0, [x20, -1]!   // push ascii digit to stack
 
+    sdiv   w19, w19, w21    // n //= 10
+    cmp    w19, 0           // keep looping until n == 0
+    bne    .push_digit
 
-// print integer stored on stack
-end:
-    mov    x0, 1            // syscall args
-    add    x3, x3, 1        // calculate pointer to first char
-    add    x1, sp, x3      
-    mov    x8, 64
-    svc    0                // print stdout
+    mov    x0, x20          // return pointer to first char
 
-    add    sp, sp, 16       // deallocate stack
+    ldp    x19, x20, [sp, 16]       // restore callee-saved registers
+    ldr    x21, [sp, 32]
+    ldp    x29, x30, [sp], 48       // restore fp, lp, deallocate stack
 
-    mov    x8, 93           // exit program
-    svc    0
+    ret                     
